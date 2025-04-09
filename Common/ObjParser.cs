@@ -5,11 +5,20 @@ using System.IO;
 using System.Numerics;
 
 namespace SWPS.Common;
+
+/// <summary>
+/// A class for parsing OBJ files.
+/// </summary>
 public static class ObjParser
 {
-    public static ObjModel Load(string path)
+    /// <summary>
+    /// Loads a 3D model from an OBJ file.
+    /// </summary>
+    /// <param name="path"> The path to the OBJ file.</param>
+    /// <returns> A <see cref="Mesh"/> object containing the vertices and indices of the model.</returns>
+    public static Mesh Load(string path)
     {
-        var model = new ObjModel();
+        var model = new Mesh();
         string[] lines = File.ReadAllLines(path);
 
         foreach (string line in lines)
@@ -24,7 +33,7 @@ public static class ObjParser
                     float x = float.Parse(parts[1], CultureInfo.InvariantCulture);
                     float y = float.Parse(parts[2], CultureInfo.InvariantCulture);
                     float z = float.Parse(parts[3], CultureInfo.InvariantCulture);
-                    model.Vertices.AddRange([x, y, z]);
+                    model.Vertices.Add(new(x, y, z));
                 }
             }
             else if (trimmedLine.StartsWith("f "))
@@ -52,10 +61,5 @@ public static class ObjParser
     }
 }
 
-public class ObjModel
-{
-    public List<float> Vertices { get; private set; } = [];
-    public List<uint> Indices { get; private set; } = [];
-}
 
    

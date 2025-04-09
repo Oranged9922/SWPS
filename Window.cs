@@ -8,66 +8,90 @@ using OpenTK.Mathematics;
 
 namespace SWPS;
 
-public class Window(GameWindowSettings gameWindowSettings, NativeWindowSettings nativeWindowSettings, Dictionary<ShaderType, string> shader) : GameWindow(gameWindowSettings, nativeWindowSettings)
+public class Window(GameWindowSettings gameWindowSettings, NativeWindowSettings nativeWindowSettings, Dictionary<string, Dictionary<ShaderType, string>> shaders) : GameWindow(gameWindowSettings, nativeWindowSettings)
 {
-    private float[] vertices { get; set; } = [];
-    private uint[] indices { get; set; } = [];
-
+    MeshBuffer room;
+    PointCloudBuffer pointCloudBuffer;
 
     private Stopwatch? _timer;
-
     private int _elementBufferObject;
-
     private int _vertexBufferObject;
-
     private int _vertexArrayObject;
-
-    private Shader? _shader;
-
+    private Dictionary<string, Shader> _shaders = [];
     private Camera _camera;
-
     private bool _firstMove = true;
     private bool _isWireframe = false;
     private Vector2 _lastPos;
-
     private double _time;
+
+    private const int texWidth = 128;
+    private const int texHeight = 128;
+    private const int texDepth = 128;
+    private int volumeTexture;
+
     protected override void OnLoad()
     {
         base.OnLoad();
-        LoadRoom();
+
+#if DEBUG
+        WriteGPUInfo();
+#endif
         GL.ClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        this.CursorState = CursorState.Hidden;
+        CreateShaders();
+        var roomMesh = ObjParser.Load("ObjFiles/Room.obj");
+        room = new MeshBuffer(roomMesh);
+        room.Unbind();
+        var pointsInsideRoom = Voxelizer.CalculatePointsInsideMesh(roomMesh, 0.1f).SelectMany(v => new[] { v.X, v.Y, v.Z }).ToArray();
+        pointCloudBuffer = new PointCloudBuffer(pointsInsideRoom);
+        pointCloudBuffer.Unbind();
 
-        _vertexArrayObject = GL.GenVertexArray();
-        GL.BindVertexArray(_vertexArrayObject);
+        GL.GenTextures(1, out volumeTexture);
+        GL.BindTexture(TextureTarget.Texture3D, volumeTexture);
 
-        _vertexBufferObject = GL.GenBuffer();
-        GL.BindBuffer(BufferTarget.ArrayBuffer, _vertexBufferObject);
-        GL.BufferData(BufferTarget.ArrayBuffer, vertices.Length * sizeof(float), vertices, BufferUsageHint.StaticDraw);
+        GL.TexParameter(TextureTarget.Texture3D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Linear);
+        GL.TexParameter(TextureTarget.Texture3D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
+        GL.TexParameter(TextureTarget.Texture3D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+        GL.TexParameter(TextureTarget.Texture3D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+        GL.TexParameter(TextureTarget.Texture3D, TextureParameterName.TextureWrapR, (int)TextureWrapMode.ClampToEdge);
 
-        _elementBufferObject = GL.GenBuffer();
-        GL.BindBuffer(BufferTarget.ElementArrayBuffer, _elementBufferObject);
-        GL.BufferData(BufferTarget.ElementArrayBuffer, indices.Length * sizeof(uint), indices, BufferUsageHint.StaticDraw);
+        GL.TexImage3D(TextureTarget.Texture3D, 0, PixelInternalFormat.Rgba32f,
+                      texWidth, texHeight, texDepth, 0,
+                      PixelFormat.Rgba, PixelType.Float, IntPtr.Zero);
+        GL.BindTexture(TextureTarget.Texture3D, 0);
 
-        _shader = new Shader(shader);
-        _shader.Use();
 
-        var vertexLocation = _shader.GetAttribLocation("aPosition");
-        GL.EnableVertexAttribArray(vertexLocation);
-        GL.VertexAttribPointer(vertexLocation, 3, VertexAttribPointerType.Float, false, 3 * sizeof(float), 0);
-        GL.GetInteger(GetPName.MaxVertexAttribs, out int maxAttributeCount);
-        Console.WriteLine($"Graphics card used: {GL.GetString(StringName.Vendor)},{GL.GetString(StringName.Renderer)} , GL version: {GL.GetString(StringName.Version)}");
-        Console.WriteLine($"Maximum number of vertex attributes supported: {maxAttributeCount}");
+
 
         _camera = new Camera(Vector3.UnitZ * 3, Size.X / (float)Size.Y);
         _timer = new Stopwatch();
         _timer.Start();
     }
 
-    private void LoadRoom()
+    private void CreateShaders()
     {
-        var room = ObjParser.Load("ObjFiles/Room.obj");
-        vertices = [.. room.Vertices];
-        indices = [.. room.Indices];
+        foreach (var kvp in shaders)
+        {
+            var shader = new Shader(kvp.Value);
+            _shaders.Add(kvp.Key, shader);
+        }
+    }
+
+    private static void WriteGPUInfo()
+    {
+        GL.GetInteger(GetPName.MaxVertexAttribs, out int maxAttributeCount);
+        Console.WriteLine($"Graphics card used: {GL.GetString(StringName.Vendor)},{GL.GetString(StringName.Renderer)} , GL version: {GL.GetString(StringName.Version)}");
+        Console.WriteLine($"Maximum number of vertex attributes supported: {maxAttributeCount}");
+        Console.WriteLine("Compute shader work group info:");
+        GL.GetInteger((GetIndexedPName)All.MaxComputeWorkGroupCount, 0, out var gc0);
+        GL.GetInteger((GetIndexedPName)All.MaxComputeWorkGroupCount, 1, out var gc1);
+        GL.GetInteger((GetIndexedPName)All.MaxComputeWorkGroupCount, 2, out var gc2);
+        GL.GetInteger((GetIndexedPName)All.MaxComputeWorkGroupSize, 0, out var w0);
+        GL.GetInteger((GetIndexedPName)All.MaxComputeWorkGroupSize, 1, out var w1);
+        GL.GetInteger((GetIndexedPName)All.MaxComputeWorkGroupSize, 2, out var w2);
+        Console.WriteLine($"Max work group count: x:{gc0}, y:{gc1}, z:{gc2}");
+        Console.WriteLine($"Max work group size: x:{w0}, y:{w1}, z:{w2}");
+        Console.WriteLine($"Max work group invocations: {GL.GetInteger(GetPName.MaxComputeWorkGroupInvocations)}");
     }
 
     protected override void OnRenderFrame(FrameEventArgs e)
@@ -76,25 +100,55 @@ public class Window(GameWindowSettings gameWindowSettings, NativeWindowSettings 
 
         GL.Clear(ClearBufferMask.ColorBufferBit);
         GL.CullFace(TriangleFace.Back);
-        _shader!.Use();
-
-        double timeValue = _timer!.Elapsed.TotalSeconds;
-
-        int vertexColorLocation = GL.GetUniformLocation(_shader.Handle, "ourColor");
-
-        GL.Uniform4(vertexColorLocation, 0.1f, 0.1f, 0.1f, 1.0f);
-
-        GL.BindVertexArray(_vertexArrayObject);
-
-        var model = Matrix4.Identity * Matrix4.CreateRotationX((float)MathHelper.DegreesToRadians(_time));
-        _shader.SetMatrix4("model", model);
-        _shader.SetMatrix4("view", _camera.GetViewMatrix());
-        _shader.SetMatrix4("projection", _camera.GetProjectionMatrix());
-
-        GL.DrawElements(PrimitiveType.Triangles, indices.Length, DrawElementsType.UnsignedInt, 0);
-        GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
+        UseComputeShaderProgram();
+        UseVertFragShaderProgram();
 
         SwapBuffers();
+    }
+
+    private void UseComputeShaderProgram()
+    {
+        _shaders["compute"].Use();
+        GL.BindImageTexture(0, volumeTexture, 0, true, 0, TextureAccess.WriteOnly, SizedInternalFormat.Rgba32f);
+
+        int groupCountX = (texWidth + 7) / 8;
+        int groupCountY = (texHeight + 7) / 8;
+        int groupCountZ = (texDepth + 7) / 8;
+        GL.DispatchCompute(groupCountX, groupCountY, groupCountZ);
+
+        GL.MemoryBarrier(MemoryBarrierFlags.TextureFetchBarrierBit);
+    }
+
+    private void UseVertFragShaderProgram()
+    {
+        _shaders["vertfrag"].Use();
+        List<IBuffer> thingsToRender = [room, pointCloudBuffer];
+
+        foreach (var thing in thingsToRender)
+        {
+            thing.Bind();
+            double timeValue = _timer!.Elapsed.TotalSeconds;
+
+            var model = Matrix4.Identity * Matrix4.CreateRotationX((float)MathHelper.DegreesToRadians(_time));
+
+            int vertexColorLocation = GL.GetUniformLocation(_shaders["vertfrag"].Handle, "clr");
+
+            _shaders["vertfrag"].SetMatrix4("model", model);
+            _shaders["vertfrag"].SetMatrix4("view", _camera.GetViewMatrix());
+            _shaders["vertfrag"].SetMatrix4("projection", _camera.GetProjectionMatrix());
+
+            switch (thing)
+            {
+                case MeshBuffer meshBuffer:
+                    GL.Uniform4(vertexColorLocation, 0.5f, 0.1f, 0.1f, 1.0f);
+                    meshBuffer.Draw();
+                    break;
+                case PointCloudBuffer pointCloudBuffer:
+                    GL.Uniform4(vertexColorLocation, 0.1f, 0.5f, 0.1f, 1.0f);
+                    pointCloudBuffer.Draw();
+                    break;
+            }
+        }
     }
 
     protected override void OnUpdateFrame(FrameEventArgs e)

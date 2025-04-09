@@ -1,12 +1,9 @@
-﻿#version 440 core
+﻿#version 450 core
 
-in float fragDistance;
-out vec4 outputColor;
-
-uniform vec4 ourColor;
+uniform vec4 clr;
+out vec4 FragColor;
 
 void main()
 {
-    float brightness = 1.0 + fragDistance;
-    outputColor = ourColor * brightness;
+    FragColor = clr; 
 }

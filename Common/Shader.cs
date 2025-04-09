@@ -82,7 +82,8 @@ namespace SWPS.Common
             GL.GetProgram(program, GetProgramParameterName.LinkStatus, out var code);
             if (code != (int)All.True)
             {
-                throw new Exception($"Error occurred whilst linking Program({program})");
+                var infoLog = GL.GetProgramInfoLog(program);
+                throw new Exception($"Error occurred whilst linking program({program}).\n\n{infoLog}");
             }
         }
 
