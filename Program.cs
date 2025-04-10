@@ -11,10 +11,16 @@ public static class Program
 
         Dictionary<string,Dictionary<ShaderType, string>> shader = new()
         {
-            { "vertfrag", new Dictionary<ShaderType, string>
+            { "roomMesh", new Dictionary<ShaderType, string>
                 {
-                    { ShaderType.VertexShader, "Shaders/shader.vert" },
-                    { ShaderType.FragmentShader, "Shaders/shader.frag" },
+                    { ShaderType.VertexShader, "Shaders/mesh/shader.vert" },
+                    { ShaderType.FragmentShader, "Shaders/mesh/shader.frag" },
+                }
+            },
+            { "pointCloud", new Dictionary<ShaderType, string>
+                {
+                    { ShaderType.VertexShader, "Shaders/pointcloud/shader.vert" },
+                    { ShaderType.FragmentShader, "Shaders/pointcloud/shader.frag" },
                 }
             },
             { "compute", new Dictionary<ShaderType, string>

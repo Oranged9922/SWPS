@@ -121,34 +121,36 @@ public class Window(GameWindowSettings gameWindowSettings, NativeWindowSettings 
 
     private void UseVertFragShaderProgram()
     {
-        _shaders["vertfrag"].Use();
-        List<IBuffer> thingsToRender = [room, pointCloudBuffer];
+        var roomShader = _shaders["roomMesh"];
+        roomShader.Use();
+        room.Bind();
+        double timeValue = _timer!.Elapsed.TotalSeconds;
 
-        foreach (var thing in thingsToRender)
-        {
-            thing.Bind();
-            double timeValue = _timer!.Elapsed.TotalSeconds;
+        var model = Matrix4.Identity * Matrix4.CreateRotationX((float)MathHelper.DegreesToRadians(_time));
 
-            var model = Matrix4.Identity * Matrix4.CreateRotationX((float)MathHelper.DegreesToRadians(_time));
+        int vertexColorLocation = GL.GetUniformLocation(roomShader.Handle, "clr");
 
-            int vertexColorLocation = GL.GetUniformLocation(_shaders["vertfrag"].Handle, "clr");
+        roomShader.SetMatrix4("model", model);
+        roomShader.SetMatrix4("view", _camera.GetViewMatrix());
+        roomShader.SetMatrix4("projection", _camera.GetProjectionMatrix());
+        GL.Uniform4(vertexColorLocation, 0.5f, 0.1f, 0.1f, 1.0f);
+        room.Draw();
 
-            _shaders["vertfrag"].SetMatrix4("model", model);
-            _shaders["vertfrag"].SetMatrix4("view", _camera.GetViewMatrix());
-            _shaders["vertfrag"].SetMatrix4("projection", _camera.GetProjectionMatrix());
+        var pointCloudShader = _shaders["pointCloud"];
+        pointCloudShader.Use();
+        pointCloudBuffer.Bind();
 
-            switch (thing)
-            {
-                case MeshBuffer meshBuffer:
-                    GL.Uniform4(vertexColorLocation, 0.5f, 0.1f, 0.1f, 1.0f);
-                    meshBuffer.Draw();
-                    break;
-                case PointCloudBuffer pointCloudBuffer:
-                    GL.Uniform4(vertexColorLocation, 0.1f, 0.5f, 0.1f, 1.0f);
-                    pointCloudBuffer.Draw();
-                    break;
-            }
-        }
+        pointCloudShader.SetMatrix4("model", model);
+        pointCloudShader.SetMatrix4("view", _camera.GetViewMatrix());
+        pointCloudShader.SetMatrix4("projection", _camera.GetProjectionMatrix());
+        pointCloudShader.SetInt("volumeTexture", 0);
+        // minBound and maxBound
+        pointCloudShader.SetVector3("minBound", new Vector3(-5));
+        pointCloudShader.SetVector3("maxBound", new Vector3(5));
+        GL.ActiveTexture(TextureUnit.Texture0);
+        GL.BindTexture(TextureTarget.Texture3D, volumeTexture);
+        GL.Enable(EnableCap.ProgramPointSize);
+        pointCloudBuffer.Draw();
     }
 
     protected override void OnUpdateFrame(FrameEventArgs e)

@@ -1,18 +1,31 @@
-﻿#version 440 core
+﻿#version 450 core
 
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
 layout(rgba32f, binding = 0) writeonly uniform image3D volumeTexture;
 
 void main()
 {
     ivec3 texSize = imageSize(volumeTexture);
+    
     ivec3 gid = ivec3(gl_GlobalInvocationID.xyz);
     if(gid.x >= texSize.x || gid.y >= texSize.y || gid.z >= texSize.z)
         return;
-        
+    
     vec3 coord = vec3(gid) / vec3(texSize - 1);
-    float distance = length(coord - vec3(0.5));  // Range 0..~0.866 for a cube
-
-    vec4 color = vec4(1.0 - distance, 1.0 - distance, 1.0 - distance, 1.0);
-    imageStore(volumeTexture, gid, color);
-}
+    
+    float d = length(coord);
+    
+    float frequency = 2000.0;
+    
+    float sineValue = sin(d * frequency * 6.28318);
+    
+    float wave = (sineValue + 1.0) / 2.0;
+    
+    vec3 lowColor = vec3(0.0, 1.0, 0.0);  // Green
+    vec3 highColor = vec3(1.0, 0.0, 0.0); // Red
+    
+    vec3 mixedColor = mix(lowColor, highColor, wave);
+    
+    imageStore(volumeTexture, gid, vec4(mixedColor, 1.0));
+};
